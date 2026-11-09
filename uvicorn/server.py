@@ -210,6 +210,7 @@ class Server:
                     port=config.port,
                     ssl=config.ssl,
                     backlog=config.backlog,
+                    reuse_address=True,
                 )
             except OSError as exc:
                 logger.error(exc)

@@ -216,6 +216,7 @@ def short_socket_name(tmp_path, tmp_path_factory):  # pragma: py-win32
 def _unused_port(socket_type: int) -> int:
     """Find an unused localhost port from 1024-65535 and return it."""
     with contextlib.closing(socket.socket(type=socket_type)) as sock:
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         sock.bind(("127.0.0.1", 0))
         return sock.getsockname()[1]
 
