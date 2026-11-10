@@ -646,3 +646,37 @@ async def test_proxy_headers_haproxy_behind_alb() -> None:
     await middleware(scope, _noop_receive, _noop_send)
     assert captured["client"] == ("1.2.3.4", 0)
     assert captured["scheme"] == "https"
+
+
+
+@pytest.mark.parametrize(
+    ("raw_input", "expected_host", "expected_port"),
+    [
+        ("1.2.3.4:8080", "1.2.3.4", 8080),
+        ("1.2.3.4:0", "1.2.3.4", 0),
+        ("1.2.3.4:65535", "1.2.3.4", 65535),
+        ("1.2.3.4:65536", "1.2.3.4", 0),
+        ("1.2.3.4:-1", "1.2.3.4", 0),
+        ("[2001:db8::1]:443", "2001:db8::1", 443),
+        ("[2001:db8::1]:70000", "2001:db8::1", 0),
+        ("[2001:db8::1]:-5", "2001:db8::1", 0),
+    ],
+)
+def test_parse_host_port_port_bounds(raw_input: str, expected_host: str, expected_port: int) -> None:
+    from uvicorn.middleware.proxy_headers import _parse_host_port
+    host, port = _parse_host_port(raw_input)
+    assert host == expected_host
+    assert port == expected_port
+
+
+@pytest.mark.anyio
+async def test_proxy_headers_sparse_whitespace_commas() -> None:
+    captured: dict[str, tuple[str, int] | None] = {}
+
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable) -> None:
+        captured["client"] = scope["client"]
+
+    middleware = ProxyHeadersMiddleware(app, trusted_hosts="127.0.0.1")
+    scope = _make_http_scope([(b"x-forwarded-for", b"203.0.113.195,  , 127.0.0.1")])
+    await middleware(scope, _noop_receive, _noop_send)
+    assert captured["client"] == ("203.0.113.195", 0)

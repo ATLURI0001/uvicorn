@@ -88,14 +88,16 @@ def _parse_host_port(value: str) -> tuple[str, int]:
             return value, 0
 
         try:
-            return host, int(remainder[1:])
+            port = int(remainder[1:])
+            return (host, port) if 0 <= port <= 65535 else (host, 0)
         except ValueError:
             return host, 0
 
     if value.count(":") == 1:
-        host, port = value.rsplit(":", 1)
+        host, port_str = value.rsplit(":", 1)
         try:
-            return host, int(port)
+            port = int(port_str)
+            return (host, port) if 0 <= port <= 65535 else (host, 0)
         except ValueError:
             return value, 0
 
@@ -171,7 +173,9 @@ class _TrustedHosts:
 
         In general this is the first "untrusted" host in the forwarded for list.
         """
-        x_forwarded_for_hosts = _parse_raw_hosts(x_forwarded_for)
+        x_forwarded_for_hosts = [h for h in _parse_raw_hosts(x_forwarded_for) if h]
+        if not x_forwarded_for_hosts:
+            return "", 0
 
         if self.always_trust:
             return _parse_host_port(x_forwarded_for_hosts[0])
