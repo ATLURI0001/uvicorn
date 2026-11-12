@@ -1,3 +1,4 @@
+from collections.abc import Sized
 import logging
 from typing import Any
 
@@ -19,6 +20,19 @@ PLACEHOLDER_FORMAT = {
 }
 
 
+def _format_client_prefix(client: Any) -> str:
+    if isinstance(client, (tuple, list)) and client:
+        host = client[0]
+        port = client[1] if len(client) > 1 else None
+        if host is not None and port is not None:
+            return f"{host}:{port} - ASGI"
+        if host is not None:
+            return f"{host} - ASGI"
+    elif client:
+        return f"{client} - ASGI"
+    return "ASGI"
+
+
 def message_with_placeholders(message: Any) -> Any:
     """
     Return an ASGI message, with any body-type content omitted and replaced
@@ -26,8 +40,8 @@ def message_with_placeholders(message: Any) -> Any:
     """
     new_message = message.copy()
     for attr in PLACEHOLDER_FORMAT.keys():
-        if message.get(attr) is not None:
-            content = message[attr]
+        content = message.get(attr)
+        if content is not None and isinstance(content, Sized):
             placeholder = PLACEHOLDER_FORMAT[attr].format(length=len(content))
             new_message[attr] = placeholder
     return new_message
@@ -54,7 +68,7 @@ class MessageLoggerMiddleware:
 
         task_counter = self.task_counter
         client = scope.get("client")
-        prefix = "%s:%d - ASGI" % (client[0], client[1]) if client else "ASGI"
+        prefix = _format_client_prefix(client)
 
         async def inner_receive() -> "ASGIReceiveEvent":
             message = await receive()
