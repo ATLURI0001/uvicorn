@@ -51,11 +51,23 @@ def get_client_addr(scope: WWWScope) -> str:
     client = scope.get("client")
     if not client:
         return ""
-    return "%s:%d" % client
+    host, port = client[0], client[1] if len(client) > 1 else None
+    host_str = str(host)
+    if ":" in host_str and not host_str.startswith("["):
+        host_str = f"[{host_str}]"
+    if port is None:
+        return host_str
+    return f"{host_str}:{int(port)}"
 
 
 def get_path_with_query_string(scope: WWWScope) -> str:
-    path_with_query_string = scope["raw_path"].decode("latin1")
-    if scope["query_string"]:
-        path_with_query_string = "{}?{}".format(path_with_query_string, scope["query_string"].decode("ascii"))
+    raw_path = scope.get("raw_path")
+    if raw_path is None:
+        path = scope.get("path") or "/"
+        path_with_query_string = path if isinstance(path, str) else bytes(path).decode("latin1")
+    else:
+        path_with_query_string = bytes(raw_path).decode("latin1")
+    query_string = scope.get("query_string") or b""
+    if query_string:
+        path_with_query_string = "{}?{}".format(path_with_query_string, bytes(query_string).decode("ascii"))
     return path_with_query_string.replace('"', "%22")
