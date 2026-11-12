@@ -6,7 +6,7 @@ from typing import Any
 
 import pytest
 
-from uvicorn.protocols.utils import get_client_addr, get_local_addr, get_remote_addr
+from uvicorn.protocols.utils import get_client_addr, get_local_addr, get_path_with_query_string, get_remote_addr
 
 
 class MockSocket:
@@ -85,8 +85,19 @@ def test_get_remote_addr():
 
 @pytest.mark.parametrize(
     "scope, expected_client",
-    [({"client": ("127.0.0.1", 36000)}, "127.0.0.1:36000"), ({"client": None}, "")],
-    ids=["ip:port client", "None client"],
+    [
+        ({"client": ("127.0.0.1", 36000)}, "127.0.0.1:36000"),
+        ({"client": ("::1", 8000)}, "[::1]:8000"),
+        ({"client": ("127.0.0.1", None)}, "127.0.0.1"),
+        ({"client": None}, ""),
+    ],
+    ids=["ip:port client", "ipv6:port client", "host without port", "None client"],
 )
 def test_get_client_addr(scope: Any, expected_client: str):
     assert get_client_addr(scope) == expected_client
+
+
+def test_get_path_with_query_string_fallbacks():
+    assert get_path_with_query_string({"path": "/items", "query_string": b"a=1"}) == "/items?a=1"
+    assert get_path_with_query_string({"raw_path": None, "path": '/a"b', "query_string": b""}) == "/a%22b"
+    assert get_path_with_query_string({"raw_path": b"/raw", "query_string": b""}) == "/raw"
