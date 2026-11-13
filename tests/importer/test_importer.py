@@ -51,3 +51,22 @@ def test_circular_import_error() -> None:
         "'tests.importer.circular_import_a' (most likely due to a circular import)"
     )
     assert expected in str(exc_info.value)
+
+
+def test_invalid_submodule_and_empty_attr_segments() -> None:
+    with pytest.raises(ImportFromStringError) as exc_info:
+        import_from_string("nonexistent_parent_package.submodule:app")
+    assert 'Could not import module "nonexistent_parent_package.submodule".' in str(exc_info.value)
+
+    with pytest.raises(ImportFromStringError) as exc_info:
+        import_from_string("tempfile:app.")
+    assert 'must be in format "<module>:<attribute>".' in str(exc_info.value)
+
+    with pytest.raises(ImportFromStringError) as exc_info:
+        import_from_string("tempfile:.app")
+    assert 'must be in format "<module>:<attribute>".' in str(exc_info.value)
+
+    from tempfile import TemporaryFile
+
+    instance = import_from_string("  tempfile : TemporaryFile  ")
+    assert instance == TemporaryFile
