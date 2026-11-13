@@ -70,3 +70,17 @@ def test_invalid_submodule_and_empty_attr_segments() -> None:
 
     instance = import_from_string("  tempfile : TemporaryFile  ")
     assert instance == TemporaryFile
+
+
+def test_invalid_relative_and_empty_module_segments() -> None:
+    with pytest.raises(ImportFromStringError) as exc_info:
+        import_from_string(".module:app")
+    assert 'must be in format "<module>:<attribute>".' in str(exc_info.value)
+
+    with pytest.raises(ImportFromStringError) as exc_info:
+        import_from_string("module..sub:app")
+    assert 'must be in format "<module>:<attribute>".' in str(exc_info.value)
+
+    with pytest.raises(ImportFromStringError) as exc_info:
+        import_from_string("..parent.sub:app")
+    assert 'must be in format "<module>:<attribute>".' in str(exc_info.value)
