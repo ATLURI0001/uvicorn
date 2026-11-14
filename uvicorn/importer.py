@@ -10,6 +10,10 @@ def import_from_string(import_str: Any) -> Any:
     if not isinstance(import_str, str):
         return import_str
 
+    if import_str.count(":") != 1:
+        message = 'Import string "{import_str}" must be in format "<module>:<attribute>".'
+        raise ImportFromStringError(message.format(import_str=import_str))
+
     module_str, _, attrs_str = import_str.partition(":")
     module_str = module_str.strip()
     attrs_str = attrs_str.strip()
@@ -17,7 +21,7 @@ def import_from_string(import_str: Any) -> Any:
         not module_str
         or not attrs_str
         or any(not seg for seg in module_str.split("."))
-        or any(not attr for attr in attrs_str.split("."))
+        or any(not attr or not attr.isidentifier() for attr in attrs_str.split("."))
     ):
         message = 'Import string "{import_str}" must be in format "<module>:<attribute>".'
         raise ImportFromStringError(message.format(import_str=import_str))
