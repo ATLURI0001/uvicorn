@@ -84,3 +84,21 @@ def test_invalid_relative_and_empty_module_segments() -> None:
     with pytest.raises(ImportFromStringError) as exc_info:
         import_from_string("..parent.sub:app")
     assert 'must be in format "<module>:<attribute>".' in str(exc_info.value)
+
+
+def test_invalid_colon_counts_and_non_identifier_attributes() -> None:
+    with pytest.raises(ImportFromStringError) as exc_info:
+        import_from_string("module_without_colon")
+    assert 'must be in format "<module>:<attribute>".' in str(exc_info.value)
+
+    with pytest.raises(ImportFromStringError) as exc_info:
+        import_from_string("module:app:extra")
+    assert 'must be in format "<module>:<attribute>".' in str(exc_info.value)
+
+    with pytest.raises(ImportFromStringError) as exc_info:
+        import_from_string("tempfile:123invalid")
+    assert 'must be in format "<module>:<attribute>".' in str(exc_info.value)
+
+    with pytest.raises(ImportFromStringError) as exc_info:
+        import_from_string("tempfile:app-name")
+    assert 'must be in format "<module>:<attribute>".' in str(exc_info.value)
