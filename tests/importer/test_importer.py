@@ -102,3 +102,11 @@ def test_invalid_colon_counts_and_non_identifier_attributes() -> None:
     with pytest.raises(ImportFromStringError) as exc_info:
         import_from_string("tempfile:app-name")
     assert 'must be in format "<module>:<attribute>".' in str(exc_info.value)
+
+    with pytest.raises(ImportFromStringError) as exc_info:
+        import_from_string("123invalid_mod:app")
+    assert 'must be in format "<module>:<attribute>".' in str(exc_info.value)
+
+    with pytest.raises(ImportFromStringError) as exc_info:
+        import_from_string("my-module:app")
+    assert 'must be in format "<module>:<attribute>".' in str(exc_info.value)

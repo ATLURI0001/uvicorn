@@ -20,7 +20,7 @@ def import_from_string(import_str: Any) -> Any:
     if (
         not module_str
         or not attrs_str
-        or any(not seg for seg in module_str.split("."))
+        or any(not seg or not seg.isidentifier() for seg in module_str.split("."))
         or any(not attr or not attr.isidentifier() for attr in attrs_str.split("."))
     ):
         message = 'Import string "{import_str}" must be in format "<module>:<attribute>".'
