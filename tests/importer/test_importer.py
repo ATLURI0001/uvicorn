@@ -1,6 +1,11 @@
 import pytest
 
-from uvicorn.importer import ImportFromStringError, import_from_string
+from uvicorn.importer import (
+    ImportFromStringError,
+    import_from_string,
+    is_valid_import_string,
+    split_import_string,
+)
 
 
 def test_invalid_format() -> None:
@@ -134,3 +139,22 @@ def test_invalid_python_keywords_in_module() -> None:
     with pytest.raises(ImportFromStringError) as exc_info:
         import_from_string("return.mymodule:app")
     assert 'must be in format "<module>:<attribute>".' in str(exc_info.value)
+
+
+def test_split_and_is_valid_import_string() -> None:
+    # Valid splits
+    mod, attr = split_import_string("my_pkg.sub_mod:app")
+    assert mod == "my_pkg.sub_mod"
+    assert attr == "app"
+
+    # Predicate truthy
+    assert is_valid_import_string("main:app") is True
+    assert is_valid_import_string("pkg.module:sub.app") is True
+
+    # Predicate falsy
+    assert is_valid_import_string("no_colon") is False
+    assert is_valid_import_string("main:") is False
+    assert is_valid_import_string(":app") is False
+    assert is_valid_import_string("for:app") is False
+    assert is_valid_import_string(None) is False
+    assert is_valid_import_string(123) is False
