@@ -7,11 +7,12 @@ class ImportFromStringError(Exception):
     pass
 
 
-def import_from_string(import_str: Any) -> Any:
-    if not isinstance(import_str, str):
-        return import_str
+def split_import_string(import_str: str) -> tuple[str, str]:
+    """Parse and validate an import string into (module_str, attrs_str).
 
-    if import_str.count(":") != 1:
+    Raises ImportFromStringError if the format or identifiers are invalid.
+    """
+    if not isinstance(import_str, str) or import_str.count(":") != 1:
         message = 'Import string "{import_str}" must be in format "<module>:<attribute>".'
         raise ImportFromStringError(message.format(import_str=import_str))
 
@@ -26,6 +27,24 @@ def import_from_string(import_str: Any) -> Any:
     ):
         message = 'Import string "{import_str}" must be in format "<module>:<attribute>".'
         raise ImportFromStringError(message.format(import_str=import_str))
+
+    return module_str, attrs_str
+
+
+def is_valid_import_string(import_str: Any) -> bool:
+    """Return True if import_str is a syntactically valid '<module>:<attribute>' specification."""
+    try:
+        split_import_string(import_str)
+        return True
+    except (ImportFromStringError, TypeError):
+        return False
+
+
+def import_from_string(import_str: Any) -> Any:
+    if not isinstance(import_str, str):
+        return import_str
+
+    module_str, attrs_str = split_import_string(import_str)
 
     try:
         module = importlib.import_module(module_str)
