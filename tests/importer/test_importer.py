@@ -110,3 +110,27 @@ def test_invalid_colon_counts_and_non_identifier_attributes() -> None:
     with pytest.raises(ImportFromStringError) as exc_info:
         import_from_string("my-module:app")
     assert 'must be in format "<module>:<attribute>".' in str(exc_info.value)
+
+
+def test_invalid_python_keywords_in_module() -> None:
+    # Top-level keywords
+    with pytest.raises(ImportFromStringError) as exc_info:
+        import_from_string("for:app")
+    assert 'must be in format "<module>:<attribute>".' in str(exc_info.value)
+
+    with pytest.raises(ImportFromStringError) as exc_info:
+        import_from_string("class:app")
+    assert 'must be in format "<module>:<attribute>".' in str(exc_info.value)
+
+    with pytest.raises(ImportFromStringError) as exc_info:
+        import_from_string("def:app")
+    assert 'must be in format "<module>:<attribute>".' in str(exc_info.value)
+
+    # Submodule segments as keywords
+    with pytest.raises(ImportFromStringError) as exc_info:
+        import_from_string("mymodule.pass:app")
+    assert 'must be in format "<module>:<attribute>".' in str(exc_info.value)
+
+    with pytest.raises(ImportFromStringError) as exc_info:
+        import_from_string("return.mymodule:app")
+    assert 'must be in format "<module>:<attribute>".' in str(exc_info.value)
