@@ -40,6 +40,49 @@ def is_valid_import_string(import_str: Any) -> bool:
         return False
 
 
+def normalize_import_string(import_str: Any) -> str | None:
+    """Normalize and sanitize an import string into a canonical '<module>:<attribute>' format.
+
+    Strips surrounding whitespace, cleans redundant spacing around colons and attribute dots,
+    and validates syntactic correctness. Returns None if import_str is invalid or non-string.
+    """
+    if not isinstance(import_str, str):
+        return None
+    try:
+        module_str, attrs_str = split_import_string(import_str)
+        clean_mod = ".".join(seg.strip() for seg in module_str.split("."))
+        clean_attr = ".".join(attr.strip() for attr in attrs_str.split("."))
+        return f"{clean_mod}:{clean_attr}"
+    except (ImportFromStringError, TypeError):
+        return None
+
+
+def parse_import_target(import_str: Any) -> dict[str, Any] | None:
+    """Decompose an import specification string into a structured descriptor dictionary.
+
+    Returns:
+        Dictionary with keys 'raw', 'normalized', 'module', 'package', 'attribute', 'attributes', 'is_nested',
+        or None if the string fails import validation.
+    """
+    normalized = normalize_import_string(import_str)
+    if normalized is None:
+        return None
+
+    module_str, attrs_str = normalized.split(":", 1)
+    attributes = attrs_str.split(".")
+    package = module_str.split(".")[0]
+
+    return {
+        "raw": import_str,
+        "normalized": normalized,
+        "module": module_str,
+        "package": package,
+        "attribute": attrs_str,
+        "attributes": attributes,
+        "is_nested": len(attributes) > 1,
+    }
+
+
 def import_from_string(import_str: Any) -> Any:
     if not isinstance(import_str, str):
         return import_str
