@@ -4,6 +4,8 @@ from uvicorn.importer import (
     ImportFromStringError,
     import_from_string,
     is_valid_import_string,
+    normalize_import_string,
+    parse_import_target,
     split_import_string,
 )
 
@@ -158,3 +160,34 @@ def test_split_and_is_valid_import_string() -> None:
     assert is_valid_import_string("for:app") is False
     assert is_valid_import_string(None) is False
     assert is_valid_import_string(123) is False
+
+
+def test_normalize_import_string_and_parse_import_target() -> None:
+    # Normalization
+    assert normalize_import_string("  my_app.api :  app  ") == "my_app.api:app"
+    assert normalize_import_string("pkg.server:create_app") == "pkg.server:create_app"
+    assert normalize_import_string("   ") is None
+    assert normalize_import_string("invalid_mod") is None
+    assert normalize_import_string(None) is None
+    assert normalize_import_string(12345) is None
+
+    # Structured contract parsing
+    target = parse_import_target("  my_app.api : server.app  ")
+    assert target is not None
+    assert target["raw"] == "  my_app.api : server.app  "
+    assert target["normalized"] == "my_app.api:server.app"
+    assert target["module"] == "my_app.api"
+    assert target["package"] == "my_app"
+    assert target["attribute"] == "server.app"
+    assert target["attributes"] == ["server", "app"]
+    assert target["is_nested"] is True
+
+    flat = parse_import_target("main:app")
+    assert flat is not None
+    assert flat["package"] == "main"
+    assert flat["is_nested"] is False
+
+    # Invalid targets
+    assert parse_import_target("for:app") is None
+    assert parse_import_target(None) is None
+
