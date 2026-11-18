@@ -680,3 +680,56 @@ async def test_proxy_headers_sparse_whitespace_commas() -> None:
     scope = _make_http_scope([(b"x-forwarded-for", b"203.0.113.195,  , 127.0.0.1")])
     await middleware(scope, _noop_receive, _noop_send)
     assert captured["client"] == ("203.0.113.195", 0)
+
+
+def test_parse_forwarded_header_rfc7239() -> None:
+    from uvicorn.middleware.proxy_headers import parse_forwarded_header
+
+    raw = 'for=192.0.2.43;proto=http, for="[2001:db8:cafe::17]:4711";proto=https;by="203.0.113.43;edge,1"'
+    parsed = parse_forwarded_header(raw)
+    assert len(parsed) == 2
+    assert parsed[0] == {"for": "192.0.2.43", "proto": "http"}
+    assert parsed[1] == {
+        "for": "[2001:db8:cafe::17]:4711",
+        "proto": "https",
+        "by": "203.0.113.43;edge,1",
+    }
+    assert parse_forwarded_header("") == []
+
+
+@pytest.mark.anyio
+async def test_proxy_headers_rfc7239_multi_hop_and_websocket() -> None:
+    captured: dict[str, object] = {}
+
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable) -> None:
+        captured["client"] = scope["client"]
+        captured["scheme"] = scope["scheme"]
+
+    middleware = ProxyHeadersMiddleware(
+        app,
+        trusted_hosts=["127.0.0.1", "10.0.0.0/8"],
+        use_forwarded_header=True,
+    )
+    # Leftmost spoofed hop claims proto=http; rightmost trusted proxy sets proto=https and IPv6 client
+    scope = _make_http_scope(
+        headers=[
+            (b"forwarded", b'for=198.51.100.9;proto=http, for="[2001:db8:cafe::17]:4711";proto=https, for=10.0.0.5')
+        ],
+        scheme="http",
+    )
+    await middleware(scope, _noop_receive, _noop_send)
+    assert captured["client"] == ("2001:db8:cafe::17", 4711)
+    assert captured["scheme"] == "https"
+
+    # WebSocket scope maps https -> wss (fresh scope with trusted proxy client)
+    ws_scope = _make_http_scope(
+        headers=[
+            (b"forwarded", b'for=198.51.100.9;proto=http, for="[2001:db8:cafe::17]:4711";proto=https, for=10.0.0.5')
+        ],
+        scheme="ws",
+    )
+    ws_scope["type"] = "websocket"
+    await middleware(ws_scope, _noop_receive, _noop_send)
+    assert captured["client"] == ("2001:db8:cafe::17", 4711)
+    assert captured["scheme"] == "wss"
+
