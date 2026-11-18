@@ -21,9 +21,15 @@ class ProxyHeadersMiddleware:
     - <https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/X-Forwarded-For>
     """
 
-    def __init__(self, app: ASGI3Application, trusted_hosts: list[str] | str = "127.0.0.1") -> None:
+    def __init__(
+        self,
+        app: ASGI3Application,
+        trusted_hosts: list[str] | str = "127.0.0.1",
+        use_forwarded_header: bool = False,
+    ) -> None:
         self.app = app
         self.trusted_hosts = _TrustedHosts(trusted_hosts)
+        self.use_forwarded_header = use_forwarded_header
 
     async def __call__(self, scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable) -> None:
         if scope["type"] == "lifespan":
@@ -33,34 +39,137 @@ class ProxyHeadersMiddleware:
         client_host = client_addr[0] if client_addr else None
 
         if client_host in self.trusted_hosts:
+            forwarded_values: list[bytes] = []
             x_forwarded_proto_value: bytes | None = None
             x_forwarded_for_values: list[bytes] = []
             for name, value in scope["headers"]:
-                if name == b"x-forwarded-proto":
+                if self.use_forwarded_header and name == b"forwarded":
+                    forwarded_values.append(value)
+                elif name == b"x-forwarded-proto":
                     x_forwarded_proto_value = value
                 elif name == b"x-forwarded-for":
                     x_forwarded_for_values.append(value)
 
-            if x_forwarded_proto_value is not None:
-                x_forwarded_proto = x_forwarded_proto_value.decode("latin1").strip()
+            handled_forwarded = False
+            if self.use_forwarded_header and forwarded_values:
+                elements = parse_forwarded_header(b", ".join(forwarded_values).decode("latin1"))
+                if elements:
+                    handled_forwarded = True
+                    for_hosts = [elem["for"] for elem in elements if elem.get("for")]
+                    if for_hosts:
+                        host, port = self.trusted_hosts.get_trusted_client_address(", ".join(for_hosts))
+                        if host:
+                            scope["client"] = (host, port)
 
-                if x_forwarded_proto in {"http", "https", "ws", "wss"}:
-                    if scope["type"] == "websocket":
-                        scope["scheme"] = x_forwarded_proto.replace("http", "ws")
-                    else:
-                        scope["scheme"] = x_forwarded_proto
+                    # Extract proto from the rightmost hop that specifies proto (closest trusted proxy)
+                    proto = ""
+                    for elem in reversed(elements):
+                        candidate = elem.get("proto", "").strip().lower()
+                        if candidate:
+                            proto = candidate
+                            break
+                    if proto in {"http", "https", "ws", "wss"}:
+                        if scope["type"] == "websocket":
+                            scope["scheme"] = proto.replace("http", "ws")
+                        else:
+                            scope["scheme"] = proto
 
-            if x_forwarded_for_values:
-                x_forwarded_for = b", ".join(x_forwarded_for_values).decode("latin1")
-                host, port = self.trusted_hosts.get_trusted_client_address(x_forwarded_for)
+            if not handled_forwarded:
+                if x_forwarded_proto_value is not None:
+                    x_forwarded_proto = x_forwarded_proto_value.decode("latin1").strip()
 
-                if host:
-                    # If the x-forwarded-for header is empty then host is an empty string.
-                    # Only set the client if we actually got something usable.
-                    # See: https://github.com/Kludex/uvicorn/issues/1068
-                    scope["client"] = (host, port)
+                    if x_forwarded_proto in {"http", "https", "ws", "wss"}:
+                        if scope["type"] == "websocket":
+                            scope["scheme"] = x_forwarded_proto.replace("http", "ws")
+                        else:
+                            scope["scheme"] = x_forwarded_proto
+
+                if x_forwarded_for_values:
+                    x_forwarded_for = b", ".join(x_forwarded_for_values).decode("latin1")
+                    host, port = self.trusted_hosts.get_trusted_client_address(x_forwarded_for)
+
+                    if host:
+                        # If the x-forwarded-for header is empty then host is an empty string.
+                        # Only set the client if we actually got something usable.
+                        # See: https://github.com/Kludex/uvicorn/issues/1068
+                        scope["client"] = (host, port)
 
         return await self.app(scope, receive, send)
+
+
+def _split_respecting_quotes(text: str, delimiter: str) -> list[str]:
+    """Split text on delimiter while ignoring delimiters inside RFC 7230 quoted strings."""
+    parts: list[str] = []
+    buf: list[str] = []
+    in_quotes = False
+    escaped = False
+
+    for ch in text:
+        if escaped:
+            buf.append(ch)
+            escaped = False
+        elif ch == "\\" and in_quotes:
+            buf.append(ch)
+            escaped = True
+        elif ch == '"':
+            in_quotes = not in_quotes
+            buf.append(ch)
+        elif ch == delimiter and not in_quotes:
+            parts.append("".join(buf))
+            buf.clear()
+        else:
+            buf.append(ch)
+
+    if buf:
+        parts.append("".join(buf))
+    return parts
+
+
+def _unquote_rfc7230(value: str) -> str:
+    value = value.strip()
+    if len(value) >= 2 and value[0] == '"' and value[-1] == '"':
+        inner = value[1:-1]
+        out: list[str] = []
+        escaped = False
+        for ch in inner:
+            if escaped:
+                out.append(ch)
+                escaped = False
+            elif ch == "\\":
+                escaped = True
+            else:
+                out.append(ch)
+        return "".join(out)
+    return value
+
+
+def parse_forwarded_header(header_value: str) -> list[dict[str, str]]:
+    """Parse an RFC 7239 `Forwarded` HTTP header into ordered hop parameter dicts.
+
+    Example:
+        'for=192.0.2.43, for="[2001:db8:cafe::17]:4711";proto=https;by=203.0.113.43'
+    """
+    if not header_value or not isinstance(header_value, str):
+        return []
+
+    elements: list[dict[str, str]] = []
+    for raw_element in _split_respecting_quotes(header_value, ","):
+        raw_element = raw_element.strip()
+        if not raw_element:
+            continue
+        params: dict[str, str] = {}
+        for pair in _split_respecting_quotes(raw_element, ";"):
+            pair = pair.strip()
+            if "=" not in pair:
+                continue
+            key, val = pair.split("=", 1)
+            key = key.strip().lower()
+            if not key:
+                continue
+            params[key] = _unquote_rfc7230(val)
+        if params:
+            elements.append(params)
+    return elements
 
 
 def _parse_raw_hosts(value: str) -> list[str]:
